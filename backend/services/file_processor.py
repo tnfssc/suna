@@ -404,7 +404,7 @@ class FileProcessor:
             
             # PDF files
             elif file_extension == '.pdf':
-                return self._extract_pdf_content(file_content)
+                return await self._extract_pdf_content(file_content)
             
             # Word documents
             elif file_extension == '.docx':
@@ -416,7 +416,7 @@ class FileProcessor:
             
             # Images (OCR)
             elif file_extension in self.SUPPORTED_IMAGE_EXTENSIONS:
-                return self._extract_image_content(file_content)
+                return await self._extract_image_content(file_content)
             
             # JSON files
             elif file_extension == '.json':
@@ -455,17 +455,21 @@ class FileProcessor:
         
         return self._sanitize_content(raw_text)
     
-    def _extract_pdf_content(self, file_content: bytes) -> str:
+    async def _extract_pdf_content(self, file_content: bytes) -> str:
         """Extract text from PDF files."""
         
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-        text_content = []
+        def _pdf_operation():
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            text_content = []
+            
+            for page in pdf_reader.pages:
+                text_content.append(page.extract_text())
+            
+            raw_text = '\n\n'.join(text_content)
+            return self._sanitize_content(raw_text)
         
-        for page in pdf_reader.pages:
-            text_content.append(page.extract_text())
-        
-        raw_text = '\n\n'.join(text_content)
-        return self._sanitize_content(raw_text)
+        # Run CPU-intensive PDF extraction in thread pool
+        return await asyncio.to_thread(_pdf_operation)
     
     def _extract_docx_content(self, file_content: bytes) -> str:
         """Extract text from Word documents."""
@@ -497,15 +501,19 @@ class FileProcessor:
         raw_text = '\n'.join(text_content)
         return self._sanitize_content(raw_text)
     
-    def _extract_image_content(self, file_content: bytes) -> str:
+    async def _extract_image_content(self, file_content: bytes) -> str:
         """Extract text from images using OCR."""
         
-        try:
-            image = Image.open(io.BytesIO(file_content))
-            raw_text = pytesseract.image_to_string(image)
-            return self._sanitize_content(raw_text)
-        except Exception as e:
-            return f"OCR extraction failed: {str(e)}"
+        def _ocr_operation():
+            try:
+                image = Image.open(io.BytesIO(file_content))
+                raw_text = pytesseract.image_to_string(image)
+                return self._sanitize_content(raw_text)
+            except Exception as e:
+                return f"OCR extraction failed: {str(e)}"
+        
+        # Run CPU-intensive OCR operation in thread pool
+        return await asyncio.to_thread(_ocr_operation)
     
     def _extract_json_content(self, file_content: bytes) -> str:
         """Extract and format JSON content."""
