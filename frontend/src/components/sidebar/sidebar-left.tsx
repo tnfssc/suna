@@ -130,7 +130,7 @@ export function SidebarLeft({
         </div>
       </SidebarHeader>
       <SidebarContent className="[&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-        {!flagsLoading && (customAgentsEnabled || marketplaceEnabled) && (
+        {!flagsLoading && (
           <SidebarGroup>
             <Link href="/dashboard">
               <SidebarMenuButton className={cn({
