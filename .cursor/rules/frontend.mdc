@@ -1,0 +1,41 @@
+---
+description: Frontend development guidelines for Next.js/React/TypeScript
+globs: ["frontend/**/*", "src/**/*"]
+alwaysApply: false
+---
+
+# Frontend Development Guidelines
+
+## TypeScript Standards
+
+- Use TypeScript strictly - no `any` types unless absolutely necessary
+- Define proper interfaces and types for all components and functions
+- Use type imports when importing types: `import type { ... }`
+
+## Component Structure
+
+- Follow established file naming: kebab-case for files, PascalCase for components
+- Use functional components with hooks
+- Implement proper prop types and default values
+- Export components as named exports
+
+## Styling and UI
+
+- Use Tailwind CSS for all styling
+- Follow Radix UI patterns for complex components
+- Maintain consistent spacing and typography
+- Use CSS variables for theme values
+
+## State Management
+
+- Use React Query (@tanstack/react-query) for server state
+- Use React hooks for local component state
+- Implement proper error boundaries
+- Handle loading and error states consistently
+
+## Supabase Integration
+
+- Use the established Supabase client patterns
+- Implement proper authentication flows
+- Follow RLS patterns for data access
+- Use real-time subscriptions where appropriate

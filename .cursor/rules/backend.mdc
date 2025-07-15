@@ -1,0 +1,42 @@
+---
+description: Backend development guidelines for Python/FastAPI
+globs: ["backend/**/*"]
+alwaysApply: false
+---
+
+# Backend Development Guidelines
+
+## Python Standards
+
+- Use Python 3.11+ features and type hints consistently
+- Follow PEP 8 style guidelines
+- Use async/await for all I/O operations
+- Implement proper error handling with try/except blocks
+
+## FastAPI Patterns
+
+- Use dependency injection for database connections and services
+- Implement proper request/response models with Pydantic
+- Use structured logging with the established logger
+- Follow RESTful API design principles
+
+## Database Integration
+
+- Use proper SQL migrations in `backend/supabase/migrations/`
+- Follow established schema patterns with UUID primary keys
+- Implement row-level security (RLS) for all user-accessible tables
+- Use proper indexing for performance
+
+## Tool Development
+
+- Extend `AgentBuilderBaseTool` for agent builder tools, `Tool` for general tools
+- Implement both `@openapi_schema` and `@xml_schema` decorators for all tools
+- Use `ToolResult` for consistent return types with success/failure states
+- Handle tool execution timeouts gracefully
+
+## Security
+
+- Validate JWT tokens without signature verification for Supabase
+- Use environment variables for all API keys
+- Encrypt sensitive data like MCP credentials
+- Validate all inputs using Pydantic models

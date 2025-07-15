@@ -1,0 +1,218 @@
+---
+description: Suna AI Agent Project development guidelines and patterns
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Suna AI Agent Project - Cursor Rules
+
+## Project Overview
+
+Suna is an open-source generalist AI agent with a full-stack architecture:
+
+- **Frontend**: Next.js/React with TypeScript, Tailwind CSS, Radix UI
+- **Backend**: Python/FastAPI with Supabase, Redis, LiteLLM integration
+- **Agent System**: Isolated Docker environments with tool execution
+- **Database**: Supabase for persistence, authentication, and real-time features
+
+## Code Style and Conventions
+
+### Frontend (Next.js/React/TypeScript)
+
+- Use TypeScript strictly - no `any` types unless absolutely necessary
+- Use `src/` directory structure as established
+- Follow established file naming: kebab-case for files, PascalCase for components
+- Use React Query (@tanstack/react-query) for data fetching
+- Follow established patterns for Supabase integration
+
+### Backend (Python/FastAPI)
+
+- Use Python 3.11+ features and type hints consistently
+- Follow FastAPI patterns for route handlers and dependency injection
+- Use structured logging with the established logger
+- Follow established patterns for LLM integration via LiteLLM
+
+### Database (Supabase)
+
+- Use proper SQL migrations in `backend/supabase/migrations/`
+- Follow established schema patterns with UUID primary keys
+- Follow row-level security (RLS) patterns for data access
+
+## File Organization
+
+### Frontend Structure
+
+```txt
+frontend/
+├── src/
+│   ├── app/                 # Next.js app router
+│   ├── components/          # Reusable React components
+│   ├── lib/                 # Utility functions and configurations
+│   ├── hooks/               # Custom React hooks
+│   └── types/               # TypeScript type definitions
+├── public/                  # Static assets
+└── package.json            # Dependencies and scripts
+```
+
+### Backend Structure
+
+```txt
+backend/
+├── agent/                   # AI agent implementation
+├── services/                # Business logic services
+├── utils/                   # Utility functions
+├── api.py                   # Main FastAPI application
+├── supabase/               # Database migrations and config
+└── pyproject.toml          # Python dependencies
+```
+
+## AI/LLM Integration Guidelines
+
+### Tool System
+
+- Follow established XML tool call format
+- Use descriptive tool names and parameter names
+- Handle tool execution timeouts gracefully
+
+### Agent Behavior
+
+- Follow established prompt patterns in `backend/agent/prompt.py`
+- Implement proper task management with todo.md files
+- Use narrative communication style for user updates
+
+## Dependencies and Packages
+
+### Frontend Key Packages
+
+- Next.js 15+ with App Router
+- React 18+ with TypeScript
+- Tailwind CSS for styling
+- Radix UI for components
+- React Query for state management
+- Supabase client for database access
+
+### Backend Key Packages
+
+- FastAPI for API framework
+- LiteLLM for LLM integration
+- Supabase for database and auth
+- Redis for caching
+- Dramatiq for background jobs
+- Pydantic for data validation
+
+## Advanced Development Patterns
+
+### Tool Development Guidelines
+
+- **Tool Registration**: Use `AgentBuilderToolRegistry` pattern for registering tools
+- **Tool Base Classes**: Extend `AgentBuilderBaseTool` for agent builder tools, `Tool` for general tools
+- **Tool Schemas**: Implement both `@openapi_schema` and `@xml_schema` decorators for all tools
+- **Tool Execution**: Use `ToolResult` for consistent return types with success/failure states
+- **MCP Integration**: Follow `MCPToolWrapper` patterns for external tool integration
+- **Dynamic Tool Building**: Use `DynamicToolBuilder` for runtime tool creation
+
+### Agent System Architecture
+
+- **Agent Versioning**: Support multiple agent versions with `agent_versions` table
+- **Agent Configuration**: Store agent config in JSONB format with proper validation
+- **Agent Workflows**: Implement step-by-step workflows with `agent_workflows` table
+- **Agent Triggers**: Support scheduled and event-based triggers
+- **Agent Builder**: Use dedicated agent builder tools for agent creation and management
+
+### Database Migration Patterns
+
+- **Idempotent Migrations**: Use `IF NOT EXISTS` for all table/index creation
+- **Enum Handling**: Wrap enum creation in `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN null; END $$;`
+- **Proper Indexing**: Create indexes for all foreign keys and frequently queried columns
+- **RLS Policies**: Implement row-level security for all user-accessible tables
+- **Triggers**: Use triggers for `updated_at` timestamp management
+
+### Configuration Management
+
+- **Environment Modes**: Support LOCAL, STAGING, PRODUCTION environments
+- **Type Safety**: Use type hints for all configuration values
+- **Validation**: Validate required configuration on startup
+- **Centralization**: Keep all configuration in `backend/utils/config.py`
+
+### Security Patterns
+
+- **JWT Validation**: Validate JWT tokens without signature verification for Supabase
+- **API Key Management**: Use environment variables for all API keys
+- **Encryption**: Encrypt sensitive data like MCP credentials
+- **Input Validation**: Validate all inputs using Pydantic models
+
+## Common Patterns to Follow
+
+### Tool Implementation Pattern
+
+```python
+# Backend - Tool implementation with proper schemas
+class ExampleTool(AgentBuilderBaseTool):
+    @openapi_schema({
+        "type": "function",
+        "function": {
+            "name": "example_action",
+            "description": "Perform an example action",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {"type": "string", "description": "First parameter"},
+                    "param2": {"type": "integer", "description": "Second parameter"}
+                },
+                "required": ["param1"]
+            }
+        }
+    })
+    @xml_schema(
+        tag_name="example-action",
+        mappings=[
+            {"param_name": "param1", "node_type": "attribute", "path": "."},
+            {"param_name": "param2", "node_type": "attribute", "path": "."}
+        ]
+    )
+    async def example_action(self, param1: str, param2: int = 0) -> ToolResult:
+        try:
+            # Implementation here
+            result = await self.perform_action(param1, param2)
+            return self.success_response(result)
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            return self.fail_response(f"Failed to perform action: {str(e)}")
+```
+
+### Database Migration Pattern
+
+```sql
+-- Migration pattern with proper error handling
+BEGIN;
+
+-- Create table with proper constraints
+CREATE TABLE IF NOT EXISTS example_table (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT example_table_name_not_empty CHECK (LENGTH(TRIM(name)) > 0)
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_example_table_name ON example_table(name);
+CREATE INDEX IF NOT EXISTS idx_example_table_created_at ON example_table(created_at);
+
+-- Enable RLS
+ALTER TABLE example_table ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY "Users can view their own records" ON example_table
+    FOR SELECT USING (auth.uid() = user_id);
+
+COMMIT;
+```
+
+## When in Doubt
+
+- Follow existing patterns in the codebase
+- Check similar implementations for guidance
+- Use the established error handling patterns
+- Follow the logging conventions with structured logging

@@ -1,0 +1,39 @@
+---
+description: Tool development guidelines and patterns
+globs: ["backend/agent/**/*", "backend/tools/**/*"]
+alwaysApply: false
+---
+
+# Tool Development Guidelines
+
+## Tool Base Classes
+
+- Extend `AgentBuilderBaseTool` for agent builder tools
+- Extend `Tool` for general tools
+- Use proper inheritance patterns
+
+## Tool Schemas
+
+- Implement both `@openapi_schema` and `@xml_schema` decorators for all tools
+- Use descriptive tool names and parameter names
+- Provide clear parameter descriptions and types
+- Mark required parameters correctly
+
+## Tool Execution
+
+- Use `ToolResult` for consistent return types with success/failure states
+- Handle tool execution timeouts gracefully
+- Implement proper error handling with try/except blocks
+- Use structured logging for tool execution
+
+## Tool Registration
+
+- Use `AgentBuilderToolRegistry` pattern for registering tools
+- Follow `MCPToolWrapper` patterns for external tool integration
+- Use `DynamicToolBuilder` for runtime tool creation
+
+## Template Usage
+
+Use this template when creating new tools:
+
+@tool-template.py
