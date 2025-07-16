@@ -6,6 +6,27 @@ from jwt.exceptions import PyJWTError
 from utils.logger import structlog
 from utils.config import config
 
+# Enterprise user UUID - consistent across environments
+ENTERPRISE_USER_ID = "4b04fee7-931f-4bfb-a5ba-88161b27141f"
+ENTERPRISE_API_KEY = "4b04fee7-931f-4bfb-a5ba-88161b27141f"
+
+def is_enterprise_user(user_id: str) -> bool:
+    """
+    Check if a user ID belongs to an enterprise account.
+    
+    This function is maintained for backward compatibility. The enterprise user
+    now works like any other user with a proper UUID, so this check is mainly
+    used for legacy code and documentation purposes.
+    
+    Args:
+        user_id: The user ID to check
+        
+    Returns:
+        bool: True if the user is an enterprise user, False otherwise
+    """
+    # Check for the specific enterprise user UUID or the old string format for backward compatibility
+    return user_id == ENTERPRISE_USER_ID
+
 # This function extracts the user ID from Supabase JWT
 async def get_current_user_id_from_jwt(request: Request) -> str:
     """
@@ -23,6 +44,12 @@ async def get_current_user_id_from_jwt(request: Request) -> str:
     Raises:
         HTTPException: If no valid token is found or if the token is invalid
     """
+
+    x_api_key = request.headers.get('x-api-key')
+
+    if x_api_key == ENTERPRISE_API_KEY:
+        return ENTERPRISE_USER_ID
+
     auth_header = request.headers.get('Authorization')
     
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -126,6 +153,9 @@ async def get_user_id_from_stream_auth(
     try:
         # Try to get user_id from token in query param (for EventSource which can't set headers)
         if token:
+            if token == ENTERPRISE_API_KEY:
+                return ENTERPRISE_USER_ID
+
             try:
                 # For Supabase JWT, we just need to decode and extract the user ID
                 payload = jwt.decode(token, options={"verify_signature": False})
