@@ -6,58 +6,56 @@ import json
 from uuid import UUID
 
 from daytona_sdk import AsyncSandbox
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, select
 
+from core.sandbox.sandbox import get_or_start_sandbox
+from core.services.supabase import DBConnection
+from core.utils.config import config
 from core.utils.logger import logger
 
 
-async def ensure_browser(thread_id: UUID, db: AsyncSession) -> bool:
+async def ensure_browser(thread_id: UUID) -> bool:
     """
-    Ensure the Stagehand API server is running and healthy for a given thread.
-    
-    This function:
-    1. Gets the sandbox for the thread
-    2. Checks if Stagehand API is healthy
-    3. If not healthy, attempts to restart it up to 3 times
-    
+    Ensure the browser (Stagehand API) is running and healthy for a given thread.
+
+    This function checks if the Stagehand API server is accessible and attempts to
+    restart it if needed. Can be used without creating BrowserTool instances.
+
     Args:
-        thread_id: The UUID of the thread
-        db: Database session
-        
+        thread_id: The thread ID to ensure browser for
+
     Returns:
-        bool: True if Stagehand API is healthy or successfully restarted, False otherwise
+        bool: True if browser is healthy/ready, False otherwise
     """
     try:
-        # Import here to avoid circular dependencies
-        from core.sandbox.sandbox import get_or_start_sandbox
-        from core.threads import Thread
-        
-        # Get thread from database
-        result = await db.execute(
-            select(Thread).where(col(Thread.thread_id) == thread_id)
-        )
-        thread = result.scalar_one_or_none()
-        
-        if not thread:
-            logger.error(f"Thread {thread_id} not found")
+        # Get database client
+        db = DBConnection()
+        client = await db.client
+
+        # Get thread data
+        thread_result = await client.table('threads').select('*').eq('thread_id', str(thread_id)).execute()
+
+        if not thread_result.data or len(thread_result.data) == 0:
+            logger.warning(f"Thread {thread_id} not found")
             return False
-        
-        # Get or create sandbox for this thread
-        if not thread.sandbox or not thread.sandbox.get("sandbox_id"):
-            logger.error(f"No sandbox found for thread {thread_id}")
+
+        thread = thread_result.data[0]
+
+        if not thread.get('sandbox'):
+            logger.warning(f"No sandbox found for thread {thread_id}")
             return False
-        
-        sandbox_id = thread.sandbox["sandbox_id"]
+
+        sandbox_id = thread['sandbox'].get('id')
+
+        if not sandbox_id:
+            logger.warning(f"No sandbox ID found for thread {thread_id}")
+            return False
+
+        # Get or start the sandbox
         sandbox = await get_or_start_sandbox(sandbox_id)
-        
-        if not sandbox:
-            logger.error(f"Failed to get sandbox {sandbox_id} for thread {thread_id}")
-            return False
-        
-        # Check Stagehand API health
-        curl_cmd = "curl -s -X GET 'http://localhost:8004/api' -H 'Content-Type: application/json'"
-        
+
+        # Simple health check curl command
+        curl_cmd = "curl -s -X GET 'http://localhost:8004/api' -H 'Content-Type: application/x-www-form-urlencoded'"
+
         logger.debug(f"Checking Stagehand API health for thread {thread_id} with: {curl_cmd}")
 
         response = await sandbox.process.exec(curl_cmd, timeout=10)
@@ -79,51 +77,34 @@ async def ensure_browser(thread_id: UUID, db: AsyncSession) -> bool:
         return True
 
     except Exception as e:
-        logger.error(f"Error ensuring browser for thread {thread_id}: {e}")
+        logger.error(f"Error checking Stagehand API health for thread {thread_id}: {e}")
         return False
 
 
 async def _restart_stagehand_api(sandbox: AsyncSandbox, thread_id: UUID) -> bool:
     """
     Attempt to restart the Stagehand API server.
-    
+
     Args:
         sandbox: The sandbox instance
-        thread_id: The UUID of the thread (for logging)
-        
+        thread_id: Thread ID for logging
+
     Returns:
-        bool: True if restart successful, False otherwise
+        bool: True if restart was successful, False otherwise
     """
     try:
-        from core.utils.config import config
-        
-        # Pass API key securely as environment variable
-        env_vars = {"GEMINI_API_KEY": config.GEMINI_API_KEY}
-        
-        response = await sandbox.process.exec(
-            "curl -X POST 'http://localhost:8004/api/init' -H 'Content-Type: application/json' -d '{\"api_key\": \"'$GEMINI_API_KEY'\"}'",
-            timeout=90,
-            env=env_vars
-        )
-        
+        openrouter_model_api_key = config.OPENROUTER_API_KEY
+        openrouter_model_name = '@preset/action-ai-model-c'
+
+        cmd = f"curl --request POST --url http://localhost:8004/api/init --header 'content-type: application/x-www-form-urlencoded' --data 'api_key={openrouter_model_api_key}' --data 'model_name={openrouter_model_name}'"
+        response = await sandbox.process.exec(cmd, timeout=90)
+
         if response.exit_code == 0:
-            # Verify the restart was successful
-            verify_cmd = "curl -s -X GET 'http://localhost:8004/api' -H 'Content-Type: application/json'"
-            verify_response = await sandbox.process.exec(verify_cmd, timeout=10)
-            
-            if verify_response.exit_code == 0:
-                try:
-                    result = json.loads(verify_response.result)
-                    if result.get("status") == "healthy":
-                        logger.info(f"✅ Stagehand API server successfully restarted for thread {thread_id}")
-                        return True
-                except json.JSONDecodeError:
-                    logger.warning(f"Stagehand API restart verification returned invalid JSON for thread {thread_id}")
-                    return False
-        
-        logger.warning(f"Stagehand API server restart failed for thread {thread_id}: {response.result}")
-        return False
-        
+            logger.info(f"Stagehand API server restarted successfully for thread {thread_id}")
+            return True
+        else:
+            logger.warning(f"Stagehand API server restart failed for thread {thread_id}: {response.result}")
+            return False
     except Exception as e:
         logger.error(f"Error restarting Stagehand API for thread {thread_id}: {e}")
         return False
