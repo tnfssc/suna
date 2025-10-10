@@ -61,17 +61,8 @@ async def ensure_browser(thread_id: UUID) -> bool:
         response = await sandbox.process.exec(curl_cmd, timeout=10)
         if response.exit_code != 0:
             logger.warning(f"Stagehand API server health check failed for thread {thread_id} with exit code {response.exit_code}")
-            # Retry restart up to 3 times
-            for attempt in range(3):
-                logger.info(f"Attempting to restart Stagehand API (attempt {attempt + 1}/3) for thread {thread_id}")
-                restart_success = await _restart_stagehand_api(sandbox, thread_id)
-                if restart_success:
-                    return True
-                if attempt < 2:  # Don't sleep after the last attempt
-                    await asyncio.sleep(2)  # Wait 2 seconds between retries
-
-            logger.error(f"Failed to restart Stagehand API after 3 attempts for thread {thread_id}")
-            return False
+            # Try to restart the Stagehand API (with built-in retries)
+            return await _restart_stagehand_api(sandbox, thread_id)
         
         # If we reach here, exit_code was 0 (success)
         return True
@@ -83,7 +74,10 @@ async def ensure_browser(thread_id: UUID) -> bool:
 
 async def _restart_stagehand_api(sandbox: AsyncSandbox, thread_id: UUID) -> bool:
     """
-    Attempt to restart the Stagehand API server.
+    Attempt to restart the Stagehand API server with retry logic.
+    
+    The browserApi init function can fail transiently due to browser startup issues,
+    so we retry the init call multiple times.
 
     Args:
         sandbox: The sandbox instance
@@ -92,19 +86,29 @@ async def _restart_stagehand_api(sandbox: AsyncSandbox, thread_id: UUID) -> bool
     Returns:
         bool: True if restart was successful, False otherwise
     """
-    try:
-        openrouter_model_api_key = config.OPENROUTER_API_KEY
-        openrouter_model_name = '@preset/action-ai-model-c'
+    openrouter_model_api_key = config.OPENROUTER_API_KEY
+    openrouter_model_name = '@preset/action-ai-model-c'
 
-        cmd = f"curl --request POST --url http://localhost:8004/api/init --header 'content-type: application/x-www-form-urlencoded' --data 'api_key={openrouter_model_api_key}' --data 'model_name={openrouter_model_name}'"
-        response = await sandbox.process.exec(cmd, timeout=90)
+    cmd = f"curl --request POST --url http://localhost:8004/api/init --header 'content-type: application/x-www-form-urlencoded' --data 'api_key={openrouter_model_api_key}' --data 'model_name={openrouter_model_name}'"
+    
+    # Retry the init call up to 3 times
+    for attempt in range(3):
+        try:
+            logger.info(f"Attempting to initialize Stagehand API (attempt {attempt + 1}/3) for thread {thread_id}")
+            response = await sandbox.process.exec(cmd, timeout=90)
 
-        if response.exit_code == 0:
-            logger.info(f"Stagehand API server restarted successfully for thread {thread_id}")
-            return True
-        else:
-            logger.warning(f"Stagehand API server restart failed for thread {thread_id}: {response.result}")
-            return False
-    except Exception as e:
-        logger.error(f"Error restarting Stagehand API for thread {thread_id}: {e}")
-        return False
+            if response.exit_code == 0:
+                logger.info(f"Stagehand API server initialized successfully for thread {thread_id}")
+                return True
+            else:
+                logger.warning(f"Stagehand API init attempt {attempt + 1} failed for thread {thread_id}: {response.result}")
+                
+        except Exception as e:
+            logger.warning(f"Error on init attempt {attempt + 1} for thread {thread_id}: {e}")
+        
+        # Wait before retrying (except after the last attempt)
+        if attempt < 2:
+            await asyncio.sleep(2)
+    
+    logger.error(f"Failed to initialize Stagehand API after 3 attempts for thread {thread_id}")
+    return False
