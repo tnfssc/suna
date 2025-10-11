@@ -35,10 +35,17 @@ class BrowserAutomation {
 
     }
 
-    async init(apiKey: string): Promise<{status: string, message: string}> {
-        try{
-            if (!this.browserInitialized) {
-                console.log("Initializing browser with api key");
+    private async sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private async initBrowserWithRetries(apiKey: string, maxRetries: number = 3): Promise<void> {
+        let lastError: Error | null = null;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`Initializing browser (attempt ${attempt}/${maxRetries})`);
+                
                 this.stagehand = new Stagehand({
                     env: "LOCAL",
                     enableCaching: true,
@@ -68,6 +75,7 @@ class BrowserAutomation {
                         ]
                     }
                 });
+                
                 await this.stagehand.init();
                 this.browserInitialized = true;
                 this.page = this.stagehand.page;
@@ -93,6 +101,43 @@ class BrowserAutomation {
                 }
 
                 await this.page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                console.log(`✅ Browser initialized successfully on attempt ${attempt}`);
+                return; // Success, exit the retry loop
+                
+            } catch (error) {
+                lastError = error as Error;
+                console.error(`❌ Browser initialization failed on attempt ${attempt}/${maxRetries}:`, error);
+                
+                // Clean up failed attempt
+                try {
+                    this.browserInitialized = false;
+                    if (this.stagehand) {
+                        await this.stagehand.close();
+                    }
+                } catch (cleanupError) {
+                    console.error('Error during cleanup:', cleanupError);
+                }
+                this.stagehand = null;
+                this.page = null;
+                
+                // If not the last attempt, wait before retrying with exponential backoff
+                if (attempt < maxRetries) {
+                    const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // 1s, 2s, 4s, max 10s
+                    console.log(`⏳ Retrying in ${delayMs}ms...`);
+                    await this.sleep(delayMs);
+                }
+            }
+        }
+        
+        // All retries failed
+        throw lastError || new Error('Browser initialization failed after all retries');
+    }
+
+    async init(apiKey: string): Promise<{status: string, message: string}> {
+        try{
+            if (!this.browserInitialized) {
+                console.log("Initializing browser with api key");
+                await this.initBrowserWithRetries(apiKey);
                 return {
                     status: "initialized",
                     message: "Browser initialized"
